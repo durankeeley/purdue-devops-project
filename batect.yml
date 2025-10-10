@@ -1,0 +1,43 @@
+containers:
+  maven_builder:
+    image: maven:3.8.5-jdk-8
+    run_as_current_user: true
+    volumes:
+      - local: ./java
+        container: /usr/src/app
+
+      - local: ./java/.m2-cache
+        container: /home/user/.m2
+
+      # - local: ./java/builds
+      #   container: /builds
+        
+    working_directory: /usr/src/app
+
+  trivy_scanner:
+    image: aquasec/trivy:latest
+    volumes:
+      - local: ./java/target
+        container: /scan-target
+      - local: ./java/.trivy-cache
+        container: /root/.cache/trivy
+    working_directory: /scan-target
+
+tasks:
+  build:
+    description: "Compile, test, and package the application into a .war file in the ./java/builds directory"
+    run:
+      container: maven_builder
+      command: mvn -e clean package
+
+  scan:
+    description: "Scan the java codebase for HIGH and CRITICAL vulnerabilities with Trivy"
+    run:
+      container: trivy_scanner
+      command: fs . --severity HIGH,CRITICAL --exit-code 1 --no-progress
+
+  ci-check:
+    description: "Run a full CI check: vulnerability scan and then build"
+    prerequisites:
+      - scan
+      - build
