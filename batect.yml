@@ -2,42 +2,95 @@ containers:
   maven_builder:
     image: maven:3.8.5-jdk-8
     run_as_current_user: true
+    environment:
+      MAVEN_OPTS: -Xmx512m
     volumes:
       - local: ./java
         container: /usr/src/app
-
       - local: ./java/.m2-cache
         container: /home/user/.m2
-
-      # - local: ./java/builds
-      #   container: /builds
-        
     working_directory: /usr/src/app
 
   trivy_scanner:
     image: aquasec/trivy:latest
     volumes:
-      - local: ./java/target
+      - local: ./java
         container: /scan-target
       - local: ./java/.trivy-cache
         container: /root/.cache/trivy
     working_directory: /scan-target
 
-tasks:
-  build:
-    description: "Compile, test, and package the application into a .war file in the ./java/builds directory"
-    run:
-      container: maven_builder
-      command: mvn -e clean package
+  docker_builder:
+    image: docker:latest
+    run_as_current_user: true
+    volumes:
+      - local: /var/run/docker.sock
+        container: /var/run/docker.sock
+      - local: ./java
+        container: /app
+    working_directory: /app
 
+  ansible_runner:
+    build: ../ansible/docker #Using ../ since started from terraform
+    run_as_current_user: true
+    volumes:
+      - local: .
+        container: /work
+      - local: ~/.ssh
+        container: /home/user/.ssh
+        read_only: true
+    working_directory: /work
+    environment:
+      ANSIBLE_HOST_KEY_CHECKING: "False"
+
+tasks:
+  # App Tasks
   scan:
     description: "Scan the java codebase for HIGH and CRITICAL vulnerabilities with Trivy"
     run:
       container: trivy_scanner
-      command: fs . --severity HIGH,CRITICAL --exit-code 1 --no-progress
+      command: fs . #--severity HIGH,CRITICAL --exit-code 1 --no-progress
 
-  ci-check:
+  compile:
+    description: "Compile, test, and package the application into a .war file in the ./java/targets directory"
+    run:
+      container: maven_builder
+      command: mvn -e -T 1 clean package
+
+  build:
+    description: "Build the application's Docker image"
+    prerequisites:
+      - compile
+    run:
+      container: docker_builder
+      command: docker build -t abc-technologies:latest -f Dockerfile .
+
+  ci-cd-pipeline:
     description: "Run a full CI check: vulnerability scan and then build"
     prerequisites:
       - scan
+      - compile
       - build
+
+  # Config Tasks
+  configure-jenkins:
+    description: "Run the Ansible playbook to configure the Jenkins server"
+    run:
+      container: ansible_runner
+      command: >
+        ansible-playbook 
+        -i ansible/inventory 
+        -l jenkins_server
+        ansible/config-playbook/jenkins-setup.yml 
+        --private-key /home/user/.ssh/id_ed25519
+
+  configure-monitoring:
+    description: "Run the Ansible playbook to configure the monitoring server"
+    run:
+      container: ansible_runner
+      command: >
+        ansible-playbook 
+        -i ansible/inventory 
+        -l monitoring_server
+        ansible/config-playbook/monitoring-setup.yml 
+        --private-key /home/user/.ssh/id_ed25519

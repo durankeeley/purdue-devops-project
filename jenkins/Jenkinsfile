@@ -1,0 +1,114 @@
+pipeline {
+    agent any
+
+    parameters {
+        string(name: 'GO_BATECT_BINARY', defaultValue: './go-batect_arm64', description: 'The executable name for the go-batect binary (use ./go-batect for x86).')
+        string(name: 'GIT_REPO_URL', defaultValue: 'https://github.com/durankeeley/purdue-devops-project.git', description: 'The URL of the Git repository to clone.')
+        string(name: 'GIT_BRANCH', defaultValue: 'main', description: 'The branch to check out from the repository.')
+        string(name: 'SLACK_WEBHOOK_SUCCESS_URL', defaultValue: '', description: 'Slack webhook URL for success notifications')
+        string(name: 'SLACK_WEBHOOK_FAILURE_URL', defaultValue: '', description: 'Slack webhook URL for failure notifications')
+    }
+
+    environment {
+        AWS_REGION = 'ap-southeast-2'
+        ECR_REPO_URI = '841376026218.dkr.ecr.ap-southeast-2.amazonaws.com/abc-technologies-ecr-repo'
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                git branch: params.GIT_BRANCH, url: params.GIT_REPO_URL
+            }
+        }
+
+        stage('Scan, Compile, and Build') {
+            steps {
+                sh "${params.GO_BATECT_BINARY} ci-cd-pipeline"
+            }
+        }
+
+        stage('Tag Docker Image') {
+            steps {
+                script {
+                    def imageTag = env.BUILD_NUMBER
+                    def fullImageName = "${env.ECR_REPO_URI}:${imageTag}"
+
+                    sh "docker tag abc-technologies:latest ${fullImageName}"
+                }
+            }
+        }
+
+        stage('Push to ECR') {
+            steps {
+                script {
+                    def imageTag = env.BUILD_NUMBER
+                    def fullImageName = "${env.ECR_REPO_URI}:${imageTag}"
+                    
+                    sh """
+                        aws ecr get-login-password --region ${env.AWS_REGION} | docker login --username AWS --password-stdin ${env.ECR_REPO_URI}
+                        docker push ${fullImageName}
+                        docker logout ${env.ECR_REPO_URI}
+                        rm -f /home/jenkins/.docker/config.json
+                    """
+                }
+            }
+        }
+
+        stage('Configure & Deploy to Kubernetes') {
+            steps {
+                script {
+                    try {
+
+                        sh "aws eks update-kubeconfig --name project-eks-cluster --region ${env.AWS_REGION}"
+
+
+                        def imageTag = env.BUILD_NUMBER
+                        dir(env.WORKSPACE) {
+                            sh """
+                                ansible-playbook ansible/config-playbook/deploy_to_k8s.yml --extra-vars "ecr_repo_uri=${env.ECR_REPO_URI} image_tag=${imageTag}"
+                            """
+                        }
+                    } finally {
+                        sh "rm -f /home/jenkins/.kube/config"
+                    }
+                }
+            }
+        }
+
+    }
+
+    post {
+        success {
+            script {
+                if (params.SLACK_WEBHOOK_SUCCESS_URL) {
+                    echo 'Build successful. Sending notification to success channel.'
+                    def successMessage = "✅ SUCCESS: Job '${env.JOB_NAME}' build #${env.BUILD_NUMBER} completed successfully."
+                    sh """
+                        curl -X POST -H 'Content-type: application/json' --data '{"text":"${successMessage}"}' '${params.SLACK_WEBHOOK_SUCCESS_URL}'
+                    """
+                }
+            }
+        }
+
+        failure {
+            script {
+
+                if (params.SLACK_WEBHOOK_FAILURE_URL) {
+                    echo 'Build failed. Sending notification to failure channel.'
+                    def failureMessage = "❌ FAILURE: Job '${env.JOB_NAME}' build #${env.BUILD_NUMBER} failed."
+                    sh """
+                        curl -X POST -H 'Content-type: application/json' --data '{"text":"${failureMessage}"}' '${params.SLACK_WEBHOOK_FAILURE_URL}'
+                    """
+                }
+            }
+        }
+        
+        always {
+            script {
+                sh 'docker system prune -af'
+            }
+            cleanWs()
+        }
+    }
+}
+

@@ -1,0 +1,4 @@
+unclassified:
+  prometheus:
+    path: "prometheus"
+    useAuthenticatedEndpoint: false

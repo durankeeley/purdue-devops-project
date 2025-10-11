@@ -1,0 +1,36 @@
+- hosts: localhost
+  connection: local
+  become: no
+
+  tasks:
+    - name: Create a temporary directory for rendered manifests
+      tempfile:
+        state: directory
+        suffix: k8s_manifests
+      register: temp_manifest_dir
+
+    - name: Render the Kubernetes Deployment manifest
+      template:
+        src: ../../k8s/deployment.yml.j2
+        dest: "{{ temp_manifest_dir.path }}/deployment.yml"
+
+    - name: Render the Kubernetes Service manifest
+      template:
+        src: ../../k8s/service.yml.j2
+        dest: "{{ temp_manifest_dir.path }}/service.yml"
+
+    - name: Apply the Kubernetes manifests to the EKS cluster
+      command: kubectl apply -f "{{ temp_manifest_dir.path }}/"
+      register: kubectl_apply_result
+      changed_when: "'configured' in kubectl_apply_result.stdout or 'created' in kubectl_apply_result.stdout"
+
+    - name: Wait for the deployment to be successful
+      command: kubectl rollout status deployment/abc-technologies-deployment --timeout=5m
+      changed_when: false # This task only checks status, it doesn't change anything
+
+    - name: Clean up temporary manifest directory
+      file:
+        path: "{{ temp_manifest_dir.path }}"
+        state: absent
+      when: temp_manifest_dir.path is defined
+

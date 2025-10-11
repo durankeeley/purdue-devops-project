@@ -1,0 +1,30 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: abc-technologies-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: abc-technologies
+  template:
+    metadata:
+      labels:
+        app: abc-technologies
+      annotations:
+        prometheus.io/scrape: 'true'
+        prometheus.io/port: '8080'
+    spec:
+      containers:
+      - name: abc-technologies-app
+        image: "{{ ecr_repo_uri }}:{{ image_tag }}"
+        ports:
+        - containerPort: 8080
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "256Mi"
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
+

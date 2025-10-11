@@ -5,7 +5,11 @@ java/build/*
 java/target/*
 terraform/.terraform/*
 terraform/terraform.tfstate
+terraform/terraform.tfstate.*
 terraform/terraform.tfstate.backup
 terraform/.terraform.lock.hcl
 terraform/secrets.auto.tfvars
 terraform/.terraform.tfstate.lock.info
+ansible/inventory
+ansible/config-playbook/jenkins_initial_admin_password.txt
+*jenkins_initial_admin_password.txt

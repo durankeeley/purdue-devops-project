@@ -1,0 +1,107 @@
+---
+- hosts: ec2_monitoring_server
+  become: yes
+  vars:
+    eks_cluster_name: "eks-project-cluster"
+    aws_region: "ap-southeast-2"
+  tasks:
+    - name: Update all system packages
+      yum:
+        name: '*'
+        state: latest
+        update_cache: yes
+
+    - name: Install required dependencies
+      yum:
+        name:
+          - docker
+        state: present
+
+    - name: Start and enable Docker service
+      service:
+        name: docker
+        state: started
+        enabled: yes
+
+    - name: Add ec2-user to the docker group for local docker management
+      user:
+        name: ec2-user
+        groups: docker
+        append: yes
+
+    - name: Create a directory for Prometheus configuration
+      file:
+        path: /etc/prometheus
+        state: directory
+        mode: '0777'
+
+    - name: Create Prometheus configuration file on the server
+      copy:
+        dest: /etc/prometheus/prometheus.yml
+        content: |
+          global:
+            scrape_interval: 15s
+          scrape_configs:
+            - job_name: 'prometheus'
+              static_configs:
+                - targets: ['localhost:9090']
+
+            - job_name: 'eks-nodes'
+              ec2_sd_configs:
+                - region: {{ aws_region }}
+                  port: 9100
+              relabel_configs:
+                - source_labels: [__meta_ec2_tag_eks_nodegroup_name]
+                  regex: 'app-workers'
+                  action: keep
+        mode: '0644'
+
+    - name: Start the Prometheus container
+      community.docker.docker_container:
+        name: prometheus
+        image: prom/prometheus:latest
+        state: started
+        restart_policy: unless-stopped
+        network_mode: host
+        volumes:
+          - /etc/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+        command: '--config.file=/etc/prometheus/prometheus.yml'
+
+    - name: Start the Grafana container
+      community.docker.docker_container:
+        name: grafana
+        image: grafana/grafana-oss:latest
+        state: started
+        restart_policy: unless-stopped
+        network_mode: host
+        ports:
+          - "3000:3000"
+
+    - name: Get the latest stable kubectl version
+      uri:
+        url: https://dl.k8s.io/release/stable.txt
+        return_content: yes
+      register: kubectl_version
+
+    - name: Download the kubectl binary for ARM64
+      get_url:
+        url: "https://dl.k8s.io/release/{{ kubectl_version.content }}/bin/linux/arm64/kubectl"
+        dest: /usr/local/bin/kubectl
+        mode: '0755'
+        owner: root
+        group: root
+
+    - name: Configure kubectl to connect to the EKS cluster
+      command: "aws eks update-kubeconfig --name {{ eks_cluster_name }} --region {{ aws_region }}"
+      become_user: ec2-user
+      changed_when: true
+
+    - name: Copy the node-exporter manifest to the server
+      copy:
+        src: ../../k8s/node-exporter.yml
+        dest: /home/ec2-user/node-exporter.yml
+
+    - name: Apply the node-exporter manifest to the EKS cluster
+      command: "kubectl apply -f /home/ec2-user/node-exporter.yml"
+      become_user: ec2-user
+      changed_when: true
