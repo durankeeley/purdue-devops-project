@@ -59,7 +59,7 @@ pipeline {
                 script {
                     try {
 
-                        sh "aws eks update-kubeconfig --region ${env.AWS_REGION} --name project-eks-cluster"
+                        sh "aws eks update-kubeconfig --region ${env.AWS_REGION} --name eks-project-cluster"
 
 
                         def imageTag = env.BUILD_NUMBER
