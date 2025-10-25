@@ -7,17 +7,32 @@ pipeline {
         string(name: 'GIT_BRANCH', defaultValue: 'main', description: 'The branch to check out from the repository.')
         string(name: 'SLACK_WEBHOOK_SUCCESS_URL', defaultValue: '', description: 'Slack webhook URL for success notifications')
         string(name: 'SLACK_WEBHOOK_FAILURE_URL', defaultValue: '', description: 'Slack webhook URL for failure notifications')
-    }
-
-    environment {
-        AWS_REGION = 'ap-southeast-2'
-        ECR_REPO_URI = '841376026218.dkr.ecr.ap-southeast-2.amazonaws.com/abc-technologies-ecr-repo'
+        string(name: 'AWS_REGION', defaultValue: 'ap-southeast-2', description: 'AWS Region for ECR and EKS')
+        string(name: 'ECR_REPO_NAME', defaultValue: 'abc-technologies-ecr-repo', description: 'The name of the Amazon ECR repository.')
     }
 
     stages {
         stage('Checkout') {
             steps {
                 git branch: params.GIT_BRANCH, url: params.GIT_REPO_URL
+            }
+        }
+
+        stage('Fetch ECR URI') {
+            steps {
+                script {
+                    echo "Fetching ECR repository URI for ${params.ECR_REPO_NAME} in region ${params.AWS_REGION}..."
+                    ECR_REPO_URI = sh(
+                        script: "aws ecr describe-repositories --repository-names ${params.ECR_REPO_NAME} --query 'repositories[0].repositoryUri' --output text --region ${params.AWS_REGION}",
+                        returnStdout: true
+                    ).trim()
+                    
+                    if (!ECR_REPO_URI) {
+                        error "Failed to fetch ECR_REPO_URI for ${params.ECR_REPO_NAME}. Please check the repository name and IAM permissions."
+                    }
+                    
+                    echo "Successfully found ECR_REPO_URI: ${ECR_REPO_URI}"
+                }
             }
         }
 
@@ -31,7 +46,7 @@ pipeline {
             steps {
                 script {
                     def imageTag = env.BUILD_NUMBER
-                    def fullImageName = "${env.ECR_REPO_URI}:${imageTag}"
+                    def fullImageName = "${ECR_REPO_URI}:${imageTag}"
 
                     sh "docker tag abc-technologies:latest ${fullImageName}"
                 }
@@ -42,12 +57,12 @@ pipeline {
             steps {
                 script {
                     def imageTag = env.BUILD_NUMBER
-                    def fullImageName = "${env.ECR_REPO_URI}:${imageTag}"
+                    def fullImageName = "${ECR_REPO_URI}:${imageTag}"
                     
                     sh """
-                        aws ecr get-login-password --region ${env.AWS_REGION} | docker login --username AWS --password-stdin ${env.ECR_REPO_URI}
+                        aws ecr get-login-password --region ${params.AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REPO_URI}
                         docker push ${fullImageName}
-                        docker logout ${env.ECR_REPO_URI}
+                        docker logout ${ECR_REPO_URI}
                         rm -f /home/jenkins/.docker/config.json
                     """
                 }
@@ -59,13 +74,13 @@ pipeline {
                 script {
                     try {
 
-                        sh "aws eks update-kubeconfig --region ${env.AWS_REGION} --name eks-project-cluster"
+                        sh "aws eks update-kubeconfig --region ${params.AWS_REGION} --name eks-project-cluster"
 
 
                         def imageTag = env.BUILD_NUMBER
                         dir(env.WORKSPACE) {
                             sh """
-                                ansible-playbook ansible/config-playbook/deploy_to_k8s.yml --extra-vars "ecr_repo_uri=${env.ECR_REPO_URI} image_tag=${imageTag}"
+                                ansible-playbook ansible/config-playbook/deploy_to_k8s.yml --extra-vars "ecr_repo_uri=${ECR_REPO_URI} image_tag=${imageTag}"
                             """
                         }
                     } finally {

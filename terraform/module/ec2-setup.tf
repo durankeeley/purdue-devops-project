@@ -47,10 +47,19 @@ resource "null_resource" "sshcheck_monitoring" {
 
 resource "null_resource" "configure_jenkins" {
   provisioner "local-exec" {
-    command = "ANSIBLE_HOST_KEY_CHECKING=False ansible-playbook -i ../ansible/inventory ../ansible/config-playbook/jenkins-setup.yml --private-key ~/.ssh/id_ed25519"
-  }
+      command = <<-EOT
+      ANSIBLE_HOST_KEY_CHECKING=False ansible-playbook \
+        -i ../ansible/inventory \
+        -l ec2_jenkins_server \
+        ../ansible/config-playbook/jenkins-setup.yml \
+        --private-key ~/.ssh/id_ed25519
+      EOT
+    }
 
-  depends_on = [local_file.ansible_inventory, null_resource.sshcheck_jenkins]
+  depends_on = [
+    local_file.ansible_inventory, 
+    null_resource.sshcheck_jenkins
+  ]
 }
 
 resource "null_resource" "configure_monitoring" {
@@ -64,14 +73,15 @@ resource "null_resource" "configure_monitoring" {
       EOT
     }
 
-  depends_on = [local_file.ansible_inventory,
-                aws_instance.monitoring_server,
-                null_resource.sshcheck_monitoring,
-                aws_eks_cluster.main,
-                aws_eks_node_group.main,
-                aws_eks_access_entry.monitoring_access,
-                aws_eks_access_policy_association.monitoring_admin_access,
-                ]
+  depends_on = [
+    local_file.ansible_inventory,
+    aws_instance.monitoring_server,
+    null_resource.sshcheck_monitoring,
+    aws_eks_cluster.main,
+    aws_eks_node_group.main,
+    aws_eks_access_entry.monitoring_access,
+    aws_eks_access_policy_association.monitoring_admin_access,
+  ]
 }
 
 # resource "null_resource" "configure_jenkins" {
