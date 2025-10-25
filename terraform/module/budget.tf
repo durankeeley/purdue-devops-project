@@ -1,22 +1,25 @@
 resource "aws_budgets_budget" "zero_spend_budget" {
-  budget_type    = "COST"
-  limit_amount   = "0.01"
-  limit_unit     = "USD"
-  time_unit      = "MONTHLY"
-  name           = "zero-spend"
+  budget_type  = "COST"
+  limit_amount = "0.01"
+  limit_unit   = "USD"
+  time_unit    = "MONTHLY"
+  name         = "zero-spend"
 }
 
 resource "aws_budgets_budget_action" "stop_ec2_action" {
-  budget_name = aws_budgets_budget.zero_spend_budget.name
-  action_type = "STOP_EC2_INSTANCES"
+  budget_name       = aws_budgets_budget.zero_spend_budget.name
+  action_type       = "RUN_SSM_DOCUMENTS"
   notification_type = "ACTUAL"
-
-  execution_role_arn = "arn:aws:iam::123456789012:role/BudgetActionRole" # Replace with your IAM role ARN
+  execution_role_arn = aws_iam_role.budget_action_role.arn
 
   definition {
-    iam_action_definition {
-      policy_arn = aws_iam_policy.budget_action_policy.arn
-      roles      = [aws_iam_role.budget_action_role.name]
+    ssm_action_definition {
+      action_sub_type = "STOP_EC2_INSTANCES"
+      region = var.region
+      instance_ids = [
+        aws_instance.jenkins_server.id,
+        aws_instance.monitoring_server.id
+      ]
     }
   }
 
@@ -28,9 +31,11 @@ resource "aws_budgets_budget_action" "stop_ec2_action" {
   approval_model = "AUTOMATIC"
 
   subscriber {
-  	subscription_type = "EMAIL"
-  	address = "your-email@example.com"
+    subscription_type = "EMAIL"
+    address           = var.budget_alert_email
   }
+
+  depends_on = [aws_iam_role_policy_attachment.attach_budget_action_policy]
 }
 
 resource "aws_iam_role" "budget_action_role" {
@@ -52,15 +57,25 @@ resource "aws_iam_role" "budget_action_role" {
 
 resource "aws_iam_policy" "budget_action_policy" {
   name        = "BudgetActionEC2StopPolicy"
-  description = "IAM policy for AWS Budget Action to stop EC2 instances"
+  description = "IAM policy for AWS Budget Action to stop EC2 instances via SSM"
 
   policy = jsonencode({
     Version = "2012-10-17",
     Statement = [
       {
         Effect   = "Allow",
+        Action   = "ec2:DescribeInstances",
+        Resource = "*"
+      },
+      {
+        Effect   = "Allow",
         Action   = "ec2:StopInstances",
         Resource = "arn:aws:ec2:*:*:instance/*"
+      },
+      {
+        Effect   = "Allow",
+        Action   = "ssm:StartAutomationExecution",
+        Resource = "arn:aws:ssm:*:*:automation-definition/AWS-StopEC2Instance:*"
       }
     ]
   })

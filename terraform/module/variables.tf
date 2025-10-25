@@ -10,3 +10,15 @@ variable "jenkins_admin_password" {
   default     = null
   sensitive   = true
 }
+
+variable "region" {
+  description = "The AWS region to deploy in"
+  type        = string
+}
+
+variable "budget_alert_email" {
+  description = "Email address to receive budget alert notifications"
+  default = "hello@example.com"
+  type        = string
+  sensitive = true
+}

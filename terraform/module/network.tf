@@ -14,7 +14,7 @@ resource "aws_subnet" "public_a" {
 
   tags = {
     Name                                        = "Project-Public-Subnet-A"
-    "kubernetes.io/cluster/project-eks-cluster" = "shared"
+    "kubernetes.io/cluster/eks-project-cluster" = "shared"
     "kubernetes.io/role/elb"                    = "1"
   }
 }
@@ -22,13 +22,13 @@ resource "aws_subnet" "public_a" {
 # Subnet in the second Availability Zone
 resource "aws_subnet" "public_b" {
   vpc_id                  = aws_vpc.main.id
-  cidr_block              = "10.0.20.0/24"
+  cidr_block              = "10.0.20.0/24" 
   availability_zone       = "ap-southeast-2b"
   map_public_ip_on_launch = true
 
   tags = {
     Name                                        = "Project-Public-Subnet-B"
-    "kubernetes.io/cluster/project-eks-cluster" = "shared"
+    "kubernetes.io/cluster/eks-project-cluster" = "shared"
     "kubernetes.io/role/elb"                    = "1"
   }
 }
