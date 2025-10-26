@@ -1,7 +1,13 @@
 ---
 - hosts: ec2_jenkins_server
-  name: Setup Jenkins Server
+  name: Setup and Configure Jenkins Server
   become: yes
+  vars:
+    jenkins_user: jenkins
+    jenkins_group: jenkins
+    jenkins_home: /var/lib/jenkins
+    ssm_password_name: "/jenkins/admin_password"
+
   tasks:
     - name: Update all system packages
       yum:
@@ -11,27 +17,8 @@
 
     - name: Install required dependencies
       yum:
-        name:
-          - git
-          - java-21-amazon-corretto-devel
-          - docker
-          - ansible
-          - aws-cli
+        name: ['git', 'java-21-amazon-corretto-devel', 'docker', 'ansible', 'aws-cli']
         state: present
-
-    - name: Get the latest stable kubectl version
-      uri:
-        url: https://dl.k8s.io/release/stable.txt
-        return_content: yes
-      register: kubectl_version
-
-    - name: Download the kubectl binary for ARM64
-      get_url:
-        url: "https://dl.k8s.io/release/{{ kubectl_version.content }}/bin/linux/arm64/kubectl"
-        dest: /usr/local/bin/kubectl
-        mode: '0755'
-        owner: root
-        group: root
 
     - name: Start and enable Docker service
       service:
@@ -39,7 +26,7 @@
         state: started
         enabled: yes
 
-    - name: Add ec2-user to the docker group for local docker management
+    - name: Add ec2-user to the docker group
       user:
         name: ec2-user
         groups: docker
@@ -58,113 +45,104 @@
         gpgcheck: yes
         gpgkey: https://pkg.jenkins.io/redhat-stable/jenkins.io-2023.key
 
-    # - name: Set Jenkins Java arguments to disable setup wizard
-    #   lineinfile:
-    #     path: /etc/sysconfig/jenkins
-    #     regexp: '^JENKINS_JAVA_OPTIONS='
-    #     line: 'JENKINS_JAVA_OPTIONS="-Djenkins.install.runSetupWizard=false"'
-    #     create: yes
-
     - name: Install Jenkins
       yum:
         name: jenkins
-        state: present
+        state: installed
+
+    - name: Ensure Jenkins is stopped and disabled before configuration
+      service:
+        name: jenkins
+        state: stopped
+        enabled: no
+
+    - name: Create systemd override directory for Jenkins service
+      file:
+        path: /etc/systemd/system/jenkins.service.d
+        state: directory
+
+    - name: Create systemd override file to disable setup wizard and set JCasC path
+      blockinfile:
+        path: /etc/systemd/system/jenkins.service.d/override.conf
+        create: yes
+        block: |
+          [Service]
+          Environment="JAVA_OPTS=-Djava.awt.headless=true -Djenkins.install.runSetupWizard=false -Dcasc.jenkins.config={{ jenkins_home }}/casc_configs"
 
     - name: Add the jenkins user to the docker group
       user:
-        name: jenkins
+        name: "{{ jenkins_user }}"
         groups: docker
         append: yes
 
-    - name: Start and enable the Jenkins service
+    - name: Create directories for JCasC configs
+      file:
+        path: "{{ jenkins_home }}/casc_configs"
+        state: directory
+        owner: "{{ jenkins_user }}"
+        group: "{{ jenkins_group }}"
+        mode: '0755'
+
+    - name: Copy plugins.txt file for installation
+      copy:
+        src: ../../jenkins/config/plugins.txt
+        dest: "{{ jenkins_home }}/plugins.txt"
+        owner: "{{ jenkins_user }}"
+        group: "{{ jenkins_group }}"
+
+    - name: Download Jenkins Plugin Installation Manager
+      get_url:
+        url: https://github.com/jenkinsci/plugin-installation-manager-tool/releases/download/2.13.2/jenkins-plugin-manager-2.13.2.jar
+        dest: /opt/jenkins-plugin-cli.jar
+        mode: '0755'
+
+    - name: Install all plugins from plugins.txt before first start
+      command: >
+        java -jar /opt/jenkins-plugin-cli.jar
+        --plugin-file {{ jenkins_home }}/plugins.txt
+        --plugin-download-directory {{ jenkins_home }}/plugins
+      changed_when: true
+      become_user: "{{ jenkins_user }}"
+
+    - name: Retrieve Jenkins admin password from AWS SSM
+      command: aws ssm get-parameter --name "{{ ssm_password_name }}" --with-decryption --query "Parameter.Value" --output text
+      register: jenkins_password_from_ssm
+      become_user: ec2-user
+      no_log: true
+
+    - name: Copy JCasC configuration files
+      template:
+        src: "{{ item.src }}"
+        dest: "{{ jenkins_home }}/casc_configs/{{ item.dest }}"
+        owner: "{{ jenkins_user }}"
+        group: "{{ jenkins_group }}"
+      loop:
+        - { src: '../../jenkins/config/jenkins.casc.yml', dest: '01-main.casc.yml' }
+        - { src: '../../jenkins/config/prometheus.casc.yml', dest: '02-prometheus.casc.yml' }
+      vars:
+        jenkinsAdminPassword: "{{ jenkins_password_from_ssm.stdout }}"
+      no_log: true
+
+    # - name: Ensure jenkins user owns the entire Jenkins home directory
+    #   file:
+    #     path: "{{ jenkins_home }}"
+    #     state: directory
+    #     owner: "{{ jenkins_user }}"
+    #     group: "{{ jenkins_group }}"
+    #     recurse: yes
+
+    - name: Ensure Jenkins is started and enabled
       service:
         name: jenkins
         state: started
         enabled: yes
 
-    - name: Reboot the server to apply all updates
-      reboot:
-        msg: "Reboot initiated by Ansible for updates to take effect."
-        pre_reboot_delay: 120
-        post_reboot_delay: 30
-        reboot_timeout: 300
-        test_command: whoami
-
-    - name: Wait for Jenkins to start up before getting password
-      wait_for:
-        path: /var/lib/jenkins/secrets/initialAdminPassword
-        timeout: 120
-
-    # - name: Wait for Jenkins to be accessible
-    #   uri:
-    #     url: http://localhost:8080
-    #     status_code: 200
-    #   register: result
-    #   until: result.status == 200
-    #   retries: 30
-    #   delay: 10
-
-    - name: Get the initial admin password from the server
-      slurp:
-        src: /var/lib/jenkins/secrets/initialAdminPassword
-      register: initial_admin_password_result
-
-    - name: Save the initial admin password to a local file
-      copy:
-        content: "{{ initial_admin_password_result.content | b64decode }}"
-        dest: "../../jenkins/jenkins_initial_admin_password.txt"
-      delegate_to: localhost
-      become: no
-
-# Jenkins Configuration as Code Tasks
-# - hosts: ec2_jenkins_server
-#   name: Configure Jenkins Server
-#   become: yes
-#   tasks:
-#     - name: Create directories for plugins and JCasC configs
-#       file:
-#         path: "{{ item }}"
-#         state: directory
-#         owner: jenkins
-#         group: jenkins
-#       loop:
-#         - /var/lib/jenkins/plugins
-#         - /var/lib/jenkins/casc_configs
-
-#     - name: Copy plugins.txt file to the server
-#       copy:
-#         src: ../../jenkins/plugins.txt
-#         dest: /var/lib/jenkins/plugins.txt
-#         owner: jenkins
-#         group: jenkins
-
-#     - name: Install plugins using jenkins-plugin-cli
-#       command: >
-#         java -jar /var/cache/jenkins/war/WEB-INF/jenkins-cli.jar -s http://localhost:8080/ -auth admin:$(cat /var/lib/jenkins/secrets/initialAdminPassword) install-plugin < /var/lib/jenkins/plugins.txt
-#       changed_when: true
-
-#     - name: Retrieve Jenkins admin password from AWS SSM
-#       command: aws ssm get-parameter --name "/jenkins/admin_password" --with-decryption --query "Parameter.Value" --output text
-#       register: jenkins_password_from_ssm
-#       become: no # Run as the ec2-user which has the IAM role
-#       no_log: true # This prevents the password from being printed in logs.
-
-#     - name: Copy JCasC configuration files
-#       template:
-#         src: "{{ item.src }}"
-#         dest: "/var/lib/jenkins/casc_configs/{{ item.dest }}"
-#         owner: jenkins
-#         group: jenkins
-#       loop:
-#         - { src: '../files/jenkins.casc.yml', dest: '01-jenkins.casc.yml' }
-#         - { src: '../files/prometheus.casc.yml', dest: '02-prometheus.casc.yml' }
-#       vars:
-#         jenkinsAdminPassword: "{{ jenkins_password_from_ssm.stdout }}"
-#       no_log: true # Also hide the output of this task as it handles the secret.
-
-#     - name: Set CASC_JENKINS_CONFIG environment variable
-#       lineinfile:
-#         path: /etc/sysconfig/jenkins
-#         regexp: '^CASC_JENKINS_CONFIG='
-#         line: 'CASC_JENKINS_CONFIG=/var/lib/jenkins/casc_configs'
+    - name: Wait for Jenkins to be accessible
+      uri:
+        url: http://localhost:8080/login
+        status_code: 200
+      register: result
+      until: result.status == 200
+      retries: 30
+      delay: 20
 

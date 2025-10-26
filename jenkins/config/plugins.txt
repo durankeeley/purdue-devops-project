@@ -4,4 +4,4 @@ git
 github-branch-source
 matrix-auth
 prometheus
-workspace-cleanup
+ws-cleanup

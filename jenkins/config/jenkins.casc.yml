@@ -4,9 +4,8 @@ jenkins:
       allowsSignup: false
       users:
         - id: "admin"
-          password: "${jenkinsAdminPassword}"
+          name: "Administrator"
+          password: "{{ jenkinsAdminPassword }}"
   authorizationStrategy:
     loggedInUsersCanDoAnything:
       allowAnonymousRead: false
-  remoting:
-    enabled: true
