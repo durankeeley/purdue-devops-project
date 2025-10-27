@@ -1,4 +1,5 @@
 workflow-aggregator
+job-dsl
 configuration-as-code
 git
 github-branch-source

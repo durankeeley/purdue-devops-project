@@ -1,0 +1,19 @@
+jobs:
+  - script: |
+      pipelineJob('abc-tech-pipeline_prod') {
+        description('Pipeline for the abc-tech-pipeline production environment.')
+        definition {
+          cpsScm {
+            scm {
+              git {
+                remote {
+                  url('https://github.com/durankeeley/purdue-devops-project.git')
+                }
+                branch('main')
+              }
+            }
+            scriptPath('jenkins/Jenkinsfile')
+            lightweight(true)
+          }
+        }
+      }

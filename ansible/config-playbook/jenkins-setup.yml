@@ -119,19 +119,13 @@
       loop:
         - { src: '../../jenkins/config/jenkins.casc.yml', dest: '01-main.casc.yml' }
         - { src: '../../jenkins/config/prometheus.casc.yml', dest: '02-prometheus.casc.yml' }
+        - { src: '../../jenkins/config/nodes.casc.yml', dest: '03-nodes.casc.yml' }
+        - { src: '../../jenkins/config/job.casc.yml', dest: '04-jobs.casc.yml' }
       vars:
         jenkinsAdminPassword: "{{ jenkins_password_from_ssm.stdout }}"
       no_log: true
 
-    # - name: Ensure jenkins user owns the entire Jenkins home directory
-    #   file:
-    #     path: "{{ jenkins_home }}"
-    #     state: directory
-    #     owner: "{{ jenkins_user }}"
-    #     group: "{{ jenkins_group }}"
-    #     recurse: yes
-
-    - name: Ensure Jenkins is started and enabled
+    - name: Start Jenkins
       service:
         name: jenkins
         state: started
@@ -145,4 +139,3 @@
       until: result.status == 200
       retries: 30
       delay: 20
-

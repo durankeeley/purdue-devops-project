@@ -1,0 +1,8 @@
+jenkins:
+  nodeMonitors:
+    - diskSpace:
+        freeSpaceThreshold: "1GB"
+        ignored: true
+    - tmpSpace:
+        freeSpaceThreshold: "1GB"
+        ignored: true
