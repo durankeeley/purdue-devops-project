@@ -60,7 +60,7 @@ We need to develop a CICD pipeline to automate the software development, testing
 
 1. Push the code to out github repository
 2. Create a continuous integration pipeline using Jenkins to compile,test and package the code present in Github
-3. Write docker file to push the war file to tomcat server
+3. Write dockerfile to push the war file to tomcat server
 4. Integrate docker with Ansible and write playbook
 5. Deploy artifacts to Kubernetes cluster
 6. Monitor resources using grafana
@@ -94,7 +94,7 @@ Verify following software is installed in the working machine
 2. Execute CICD pipeline to execute the jobs created in step
 3. Setup master-slave node to distribute the tasks in pipeline
 
-**Task 3** : Write a Docket file Create an Image and container on docker host. Integrate docker host with Jenkins. Create CI/CD job on Jenkins to build and deploy on a container
+**Task 3** : Write a Dockerfile Create an Image and container on docker host. Integrate docker host with Jenkins. Create CI/CD job on Jenkins to build and deploy on a container
 
 1. Enhance the packagejob created in step 1 of task 2 to create a docker image
 2. In the docker image add code to move the war file to tomcat server and build the image
@@ -123,7 +123,7 @@ Verify following software is installed in the working machine
 
 - Create a detailed solution document with screenshot for each task.
 - Please submit complete code developed by you including docker file, playbook etc.
-- Please submit all the snapshot.
+- Please submit all the screenshots.
 
 ## 10. Business Benefits
 
@@ -142,9 +142,10 @@ After the solution is built, the business will have the below operational benefi
 
 ## 11 How to submit the project
   
-You can even upload all the scripts/files/code into your GitHub repository and share your repository with us.
-Also, share the detailed solution document containing a stepwise screenshot of tasks.
-
+- A detailed solution document explaining each step with screenshots (Google Docs link)
+- All code/scripts developed during the project.
+- GitHub repository link.
+- Ticket Subject: IGP Project Submission
 
 ## 12 Marks Allocation
 
@@ -152,3 +153,4 @@ Also, share the detailed solution document containing a stepwise screenshot of t
 - Creation of Docker file and integration with Ansible [30 Marks]
 - Deploy artifacts to Kubernetes [35 Marks]
 - Creation of Prometheus to monitor node [15 Marks]
+

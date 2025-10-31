@@ -63,3 +63,12 @@ resource "aws_instance" "monitoring_server" {
   }
 }
 
+resource "aws_security_group_rule" "allow_prometheus_from_monitoring_to_jenkins" {
+  type                     = "ingress"
+  protocol                 = "tcp"
+  from_port                = 8080
+  to_port                  = 8080
+  security_group_id        = aws_security_group.jenkins_sg.id
+  source_security_group_id = aws_security_group.monitoring_sg.id
+  description              = "Allow Prometheus scrapes from Monitoring Server to Jenkins"
+}

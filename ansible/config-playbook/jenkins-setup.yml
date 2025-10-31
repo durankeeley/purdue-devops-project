@@ -20,6 +20,20 @@
         name: ['git', 'java-21-amazon-corretto-devel', 'docker', 'ansible', 'aws-cli']
         state: present
 
+    - name: Get the latest stable kubectl version
+      uri:
+        url: https://dl.k8s.io/release/stable.txt
+        return_content: yes
+      register: kubectl_version
+
+    - name: Download the kubectl binary for ARM64
+      get_url:
+        url: "https://dl.k8s.io/release/{{ kubectl_version.content }}/bin/linux/arm64/kubectl"
+        dest: /usr/local/bin/kubectl
+        mode: '0755'
+        owner: root
+        group: root
+
     - name: Start and enable Docker service
       service:
         name: docker

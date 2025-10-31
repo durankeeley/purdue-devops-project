@@ -54,6 +54,16 @@
                 - source_labels: [__meta_ec2_tag_eks_nodegroup_name]
                   regex: 'app-workers'
                   action: keep
+
+            - job_name: 'jenkins'
+              metrics_path: /prometheus
+              ec2_sd_configs:
+                - region: {{ aws_region }}
+                  port: 8080
+              relabel_configs:
+                - source_labels: [__meta_ec2_tag_Name]
+                  regex: 'ec2-jenkins-server'
+                  action: keep
         mode: '0644'
 
     - name: Start the Prometheus container
