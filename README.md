@@ -136,3 +136,4 @@ nc -zv <pod-ip> 9100
 5. **Advanced Monitoring:** Set up alerting in Grafana to notify the team of critical issues via email or Slack.
 6. **Blue-Green Deployments:** Implement blue-green deployment strategies in the pipeline to minimize downtime during releases.
 7. **Terraform State Management:** Use remote state storage with AWS S3 or Terraform cloud for better collaboration and state locking.
+*. **Grafana Dashboards as Code:** Create Grafana dashboards using code to version control and automate dashboard creation.
